@@ -1,26 +1,28 @@
-﻿using Dalamud.Game.Command;
+using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using System.IO;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
 using SamplePlugin.Windows;
+using FFXIVClientStructs.FFXIV.Client.UI;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 
 namespace SamplePlugin;
 
 public sealed class Plugin : IDalamudPlugin
 {
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
-    [PluginService] internal static ITextureProvider TextureProvider { get; private set; } = null!;
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
+    [PluginService] internal static IGameGui GameGui { get; private set; } = null!;
+    [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
-    private const string CommandName = "/pmycommand";
+    private const string CommandName = "/bg";
 
     public Configuration Configuration { get; init; }
 
     public readonly WindowSystem WindowSystem = new("SamplePlugin");
     private ConfigWindow ConfigWindow { get; init; }
-    private MainWindow MainWindow { get; init; }
 
     public Plugin()
     {
@@ -30,10 +32,8 @@ public sealed class Plugin : IDalamudPlugin
         var goatImagePath = Path.Combine(PluginInterface.AssemblyLocation.Directory?.FullName!, "goat.png");
 
         ConfigWindow = new ConfigWindow(this);
-        MainWindow = new MainWindow(this, goatImagePath);
 
         WindowSystem.AddWindow(ConfigWindow);
-        WindowSystem.AddWindow(MainWindow);
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
@@ -45,9 +45,6 @@ public sealed class Plugin : IDalamudPlugin
         // This adds a button to the plugin installer entry of this plugin which allows
         // to toggle the display status of the configuration ui
         PluginInterface.UiBuilder.OpenConfigUi += ToggleConfigUI;
-
-        // Adds another button that is doing the same but for the main ui of the plugin
-        PluginInterface.UiBuilder.OpenMainUi += ToggleMainUI;
     }
 
     public void Dispose()
@@ -55,19 +52,55 @@ public sealed class Plugin : IDalamudPlugin
         WindowSystem.RemoveAllWindows();
 
         ConfigWindow.Dispose();
-        MainWindow.Dispose();
 
         CommandManager.RemoveHandler(CommandName);
     }
 
-    private void OnCommand(string command, string args)
+    private unsafe void OnCommand(string command, string args)
     {
-        // in response to the slash command, just toggle the display status of our main ui
-        ToggleMainUI();
+        AddonPartyList* partyList = (AddonPartyList*)GameGui.GetAddonByName("_PartyList");
+        if (partyList == null)
+        {
+            return;
+        }
+        foreach (var member in partyList->PartyMembers)
+        {
+            var hpGaugeBar = member.HPGaugeBar;
+            Log.Information($"{member.ToString()}");
+            if (hpGaugeBar == null || hpGaugeBar->UldManager.NodeListCount < 8)
+            {
+                continue;
+            }
+            SetGaugeOverlay(hpGaugeBar, true);
+        }
+        foreach (var member in partyList->TrustMembers)
+        {
+            var hpGaugeBar = member.HPGaugeBar;
+            Log.Information($"{member.ToString()}");
+            if (hpGaugeBar == null || hpGaugeBar->UldManager.NodeListCount < 8)
+            {
+                continue;
+            }
+            SetGaugeOverlay(hpGaugeBar, true);
+        }
+    }
+
+    private unsafe void SetGaugeOverlay(AtkComponentGaugeBar* hpGaugeBar, bool enabled)
+    {
+        int add = enabled ? 8 : 0;
+        var hp = (AtkNineGridNode*)hpGaugeBar->UldManager.NodeList[1];
+        var barrierEnd = (AtkNineGridNode*)hpGaugeBar->UldManager.NodeList[4];
+        var barrierTop = (AtkNineGridNode*)hpGaugeBar->UldManager.NodeList[7];
+        var barrierFadeOut = (AtkNineGridNode*)hpGaugeBar->UldManager.NodeList[8];
+        var barrierFadeIn = (AtkNineGridNode*)hpGaugeBar->UldManager.NodeList[9];
+        var barrierOverflow = (AtkImageNode*)hpGaugeBar->UldManager.NodeList[10];
+        barrierTop->SetYShort((short)(8 + add));
+        barrierFadeOut->SetYShort((short)(-8 + add));
+        barrierFadeIn->SetYShort((short)(-8 + add));
+        barrierOverflow->SetYShort((short)(9 + add));
     }
 
     private void DrawUI() => WindowSystem.Draw();
 
     public void ToggleConfigUI() => ConfigWindow.Toggle();
-    public void ToggleMainUI() => MainWindow.Toggle();
 }
