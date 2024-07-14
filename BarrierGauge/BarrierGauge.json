@@ -1,0 +1,11 @@
+{
+  "Author": "SuspiciousActivity",
+  "Name": "Barrier Gauge",
+  "Punchline": "Customize the visualization of barriers on your HP.",
+  "Description": "Customize the visualization of barriers on your HP.",
+  "ApplicableVersion": "any",
+  "Tags": [
+    "barrier",
+    "gauge"
+  ]
+}
